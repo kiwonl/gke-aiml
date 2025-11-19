@@ -4,13 +4,19 @@ GCS Fuse를 사용하여 Google Cloud Storage(GCS) 버킷을 로컬 파일 시�
 
 ### 1. 환경 설정 (Environment Setup)
 
+먼저, Google Cloud 프로젝트 및 클러스터 관련 환경 변수를 설정합니다.
+*   `HUGGINGFACE_TOKEN`: Gemma 모델을 다운로드받기 위한 HuggingFace Access Token입니다. (모델 사용 권한 승인 필요)
 ```bash
 export PROJECT_ID=
-export HUGGINGFACE_TOKEN=
+export PROJECT_NUMBER=
 
-export CLUSTER_NAME=vllm-gemma-3-gcsfuse
 export REGION=asia-southeast1
+export CLUSTER_NAME=vllm-gemma-3-gcsfuse
+
 export BUCKET_NAME=$PROJECT_ID-aimodel
+```
+```bash
+export HUGGINGFACE_TOKEN=
 ```
 
 ### 2. GKE Autopilot 클러스터 생성 (Create GKE Autopilot Cluster)
@@ -49,6 +55,13 @@ gcloud iam service-accounts add-iam-policy-binding gke-ai-sa@$PROJECT_ID.iam.gse
 kubectl annotate serviceaccount gpu-k8s-sa \
     iam.gke.io/gcp-service-account=gke-ai-sa@$PROJECT_ID.iam.gserviceaccount.com
 ```
+KSA 생성 확인
+```
+$ kubectl get sa
+NAME         SECRETS   AGE
+default      0         10m
+gpu-k8s-sa   0         17s
+```
 
 ### 4. 모델 저장용 GCS 버킷 생성 (Create GCS Bucket for Model Storage)
 
@@ -68,15 +81,14 @@ kubectl create secret generic hf-secret \
 
 GCS 버킷을 영구 볼륨(Persistent Volume)으로 사용하기 위해 설정을 적용합니다. [관련 문서](https://cloud.google.com/kubernetes-engine/docs/how-to/cloud-storage-fuse-csi-driver-perf#inference-serving-example)
 
-> **주의:** `gcs-pv.yaml` 파일 내의 `${BUCKET_NAME}`을 실제 버킷 이름으로 변경해야 합니다.
+> **주의:** `gcs-pvc.yaml` 파일 내의 `${BUCKET_NAME}`을 실제 버킷 이름으로 변경해야 합니다.
+> ```
+> sed -i "s/\$BUCKET_NAME/${BUCKET_NAME}/g" gcs-pvc.yaml
+> ```
+
 
 ```bash
-kubectl apply -f gcs-pv.yaml
-```
-
-생성 확인:
-```bash
-kubectl get pv,pvc
+kubectl apply -f gcs-pvc.yaml
 ```
 
 ### 7. 모델 다운로드 Job 실행 (Run Model Download Job)
@@ -84,15 +96,16 @@ kubectl get pv,pvc
 HuggingFace에서 모델을 다운로드하여 GCS 버킷(PVC)에 저장하는 Job을 실행합니다. [관련 문서](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml#populate-disk)
 
 ```bash
-kubectl apply -f hf-downloader.yaml
+kubectl apply -f model-downloader.yaml
 ```
 
 작업 상태 확인:
 ```bash
-kubectl get job
-kubectl get po
+$ kubectl get job
+NAME                   STATUS     COMPLETIONS   DURATION   AGE
+model-downloader-job   Complete   1/1           2m57s      25m
 ```
-`producer-job`이 `Complete` 상태가 될 때까지 대기합니다.
+`model-downloader-job`이 `Complete` 상태가 될 때까지 대기합니다.
 
 ### 8. Inference Server 배포 (Deploy Inference Server)
 
@@ -117,7 +130,7 @@ curl http://$VLLM_SERVICE/v1/chat/completions \
 -X POST \
 -H "Content-Type: application/json" \
 -d '{
-    "model": "google/gemma-3-12b-it",
+    "model": "/data/gemma-3-12b-it",
     "messages": [
         {
           "role": "user",
@@ -134,7 +147,7 @@ curl http://$VLLM_SERVICE/v1/chat/completions \
   "id": "chatcmpl-e50322f3b7ef408d90a383525c8a37e6",
   "object": "chat.completion",
   "created": 1763088085,
-  "model": "google/gemma-3-12b-it",
+  "model": "/data/gemma-3-12b-it",
   "choices": [
     {
       "index": 0,

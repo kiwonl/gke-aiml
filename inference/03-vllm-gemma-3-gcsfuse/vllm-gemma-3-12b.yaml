@@ -59,7 +59,7 @@ spec:
       - name: model
         persistentVolumeClaim:
           # References the GCS PVC created earlier.
-          claimName: model-bucket-pv
+          claimName: model-pvc
       nodeSelector:
         cloud.google.com/gke-accelerator: nvidia-l4
         cloud.google.com/gke-gpu-driver-version: latest

@@ -18,7 +18,6 @@ GKE Autopilot과 **Hyperdisk ML**을 사용하여 Gemma-3 모델을 고속으로
 
 ```bash
 export PROJECT_ID=
-export PROJECT_NUMBER=
 export HUGGINGFACE_TOKEN=
 
 export REGION=asia-southeast1

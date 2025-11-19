@@ -8,22 +8,17 @@ GKE Autopilot을 사용하여 Gemma-3 모델을 vLLM으로 서빙하는 과정�
 
 ### 1. 기본 환경 설정 (Basic Environment Setup)
 
-먼저, Google Cloud 프로젝트 및 클러스터 관련 환경 변수를 설정합니다. 이 변수들은 이후 명령어에서 재사용됩니다.
-
-*   `PROJECT_ID`: 현재 작업 중인 Google Cloud 프로젝트 ID입니다.
-*   `PROJECT_NUMBER`: 프로젝트 번호입니다. (IAM 권한 부여 시 필요)
+먼저, Google Cloud 프로젝트 및 클러스터 관련 환경 변수를 설정합니다.
 *   `HUGGINGFACE_TOKEN`: Gemma 모델을 다운로드받기 위한 HuggingFace Access Token입니다. (모델 사용 권한 승인 필요)
-*   `CLUSTER_NAME`: 생성할 GKE 클러스터의 이름입니다.
-*   `REGION`: 클러스터가 배포될 리전입니다.
-
 ```bash
 export PROJECT_ID=
 export PROJECT_NUMBER=
-export HUGGINGFACE_TOKEN=
+
 export REGION=asia-southeast1
+export CLUSTER_NAME=vllm-gemma-3
 ```
 ```bash
-export CLUSTER_NAME=vllm-gemma-3
+export HUGGINGFACE_TOKEN=
 ```
 
 ### 2. GKE Autopilot 클러스터 생성 (Create GKE Autopilot Cluster)
