@@ -9,7 +9,7 @@ export PROJECT_ID=
 export HUGGINGFACE_TOKEN=
 
 export CLUSTER_NAME=vllm-gemma-3-gcsfuse
-export REGION=asia-northeast1
+export REGION=asia-southeast1
 export BUCKET_NAME=$PROJECT_ID-aimodel
 ```
 

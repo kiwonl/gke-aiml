@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: serving-bucket-pv
+  name: model-pv
 spec:
   accessModes:
   - ReadWriteMany
@@ -33,7 +33,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: serving-bucket-pvc
+  name: model-pvc
   namespace: default
 spec:
   accessModes:
@@ -41,5 +41,5 @@ spec:
   resources:
     requests:
       storage: 64Gi
-  volumeName: serving-bucket-pv
+  volumeName: model-bucket-pv
   storageClassName: ""

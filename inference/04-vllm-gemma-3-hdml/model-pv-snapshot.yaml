@@ -17,4 +17,4 @@ spec:
   volumeSnapshotClassName: disk-image-vsc
   source:
     # The name of the PersistentVolumeClaim to snapshot.
-    persistentVolumeClaimName: producer-pvc
+    persistentVolumeClaimName: serving-pvc

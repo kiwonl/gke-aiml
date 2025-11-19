@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: producer-job
+  name: model-downloader-job
 spec:
   template:  # Template for the Pods the Job will create
     metadata:
@@ -13,7 +13,7 @@ spec:
         gke-gcsfuse/ephemeral-storage-limit: "0"
     spec:
       containers:
-      - name: copy
+      - name: model-downloader
         resources:
           requests:
             cpu: "12"
@@ -35,14 +35,14 @@ spec:
               key: hf_api_token
         volumeMounts:
           # Mount path for the PersistentVolume.
-          - mountPath: "/data"
-            name: volume       
+          - name: model
+            mountPath: "/data"            
       # Prevents Pod restarts on scheduling failures. The Job will create new Pods
       # for retries, up to the specified "backoffLimit".
       restartPolicy: Never
       serviceAccountName: gpu-k8s-sa
       volumes:
-        - name: volume
+        - name: model
           persistentVolumeClaim:
             # References the GCS PVC created earlier.
             claimName: serving-bucket-pvc

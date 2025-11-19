@@ -3,23 +3,31 @@ kind: Deployment
 metadata:
   name: vllm-gemma-deployment
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: gemma-server
   template:
     metadata:
-      annotations:
-        gke-gcsfuse/volumes: "true"
-        gke-gcsfuse/cpu-limit: "0"
-        gke-gcsfuse/memory-limit: "0"
-        gke-gcsfuse/ephemeral-storage-limit: "0"
       labels:
         app: gemma-server
         ai.gke.io/model: gemma-3-12b-it
         ai.gke.io/inference-server: vllm
         examples.ai.gke.io/source: user-guide
     spec:
+      affinity:
+        # Pod anti-affinity 를 사용해 가능한 다른 zone 에 배치되도록 설정
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - gemma-server
+              topologyKey: topology.kubernetes.io/zone
       containers:
       - name: inference-server
         image: docker.io/vllm/vllm-openai:v0.10.0
@@ -49,17 +57,16 @@ spec:
         - mountPath: /dev/shm
           name: dshm
         # Mount path for the PersistentVolume.
-        - name: volume
+        - name: model
           mountPath: "/data"
-      serviceAccountName: gpu-k8s-sa
       volumes:
       - name: dshm
         emptyDir:
           medium: Memory
-      - name: volume
+      - name: model
         persistentVolumeClaim:
-          # References the GCS PVC created earlier.
-          claimName: serving-bucket-pvc      
+          # References the hdml PVC created earlier.
+          claimName: hdml-consumer-pvc
       nodeSelector:
         cloud.google.com/gke-accelerator: nvidia-l4
         cloud.google.com/gke-gpu-driver-version: latest

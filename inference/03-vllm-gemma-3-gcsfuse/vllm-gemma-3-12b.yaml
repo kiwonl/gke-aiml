@@ -49,17 +49,17 @@ spec:
         - mountPath: /dev/shm
           name: dshm
         # Mount path for the PersistentVolume.
-        - name: volume
+        - name: model
           mountPath: "/data"
       serviceAccountName: gpu-k8s-sa
       volumes:
       - name: dshm
         emptyDir:
           medium: Memory
-      - name: volume
+      - name: model
         persistentVolumeClaim:
           # References the GCS PVC created earlier.
-          claimName: serving-bucket-pvc      
+          claimName: model-bucket-pv
       nodeSelector:
         cloud.google.com/gke-accelerator: nvidia-l4
         cloud.google.com/gke-gpu-driver-version: latest

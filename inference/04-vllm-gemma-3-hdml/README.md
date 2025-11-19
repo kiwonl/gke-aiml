@@ -46,11 +46,13 @@ kubectl create secret generic hf-secret \
 
 ### 4. 모델 다운로드 Job 실행 (Run Model Download Job)
 
-HuggingFace에서 모델을 다운로드하여 **Hyperdisk Balanced**에 저장하는 Job을 실행합니다. Hyperdisk ML은 직접 쓰기가 불가능하므로, 먼저 일반 디스크에 다운로드해야 합니다.
+HuggingFace에서 AI 모델을 다운로드하여 **Hyperdisk Balanced**에 저장하는 Job을 실행합니다.
+Autopilot 에서 기본 ephmeral disk Size 는 10Gb 이기 떄문에, Performance Compute Type 을 사용해 노드 전체의 디스크 공간을 사용하도록 한다.
+C 타입의 머신 시리즈는 PD 가 아닌 Hyperdisk 만 지원하기 때문에, Hyperdisk Balanced 를 PV 로 사용해 모델을 저장한다.
 [관련 문서](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml#populate-disk)
 
 ```bash
-kubectl apply -f hf-downloader.yaml
+kubectl apply -f model-downloader.yaml
 ```
 
 Job이 완료될 때까지 대기합니다.
@@ -59,16 +61,18 @@ kubectl wait --for=condition=complete job/model-downloader --timeout=300s
 ```
 
 ### 5. 볼륨 스냅샷 생성 (Create Volume Snapshot)
-
-모델이 저장된 Hyperdisk Balanced 볼륨으로부터 **Volume Snapshot**을 생성합니다. 이 스냅샷은 이후 Hyperdisk ML 볼륨을 생성하는 원본으로 사용됩니다.
+Job 에 의해 AI 모델이 저장된 Hyperdisk Balanced 볼륨으로부터 **Volume Snapshot**을 생성합니다.
+이 스냅샷은 이후 Hyperdisk ML 볼륨을 생성하는 원본으로 사용됩니다.
 
 ```bash
-kubectl apply -f volume-snapshot.yaml
+kubectl apply -f model-pv-snapshot.yaml
 ```
 
 ### 6. Hyperdisk ML 스토리지 클래스 및 PVC 생성 (Create StorageClass & PVC for Hyperdisk ML)
 
-생성된 스냅샷을 소스로 하여 **Hyperdisk ML** 타입의 PersistentVolumeClaim (PVC)을 생성합니다. Hyperdisk ML은 읽기 전용이지만 매우 빠른 로딩 속도를 제공합니다.
+생성된 VolumeSnaphot 스냅샷을 소스로 하여 **Hyperdisk ML** 의 다중 영역 StorageClass 와 PersistentVolumeClaim (PVC)을 생성합니다. 
+StorageClass 의 Zone 부분에, Inference 서버를 동작시킬 모든 Zone 을 명시합니다.
+https://docs.cloud.google.com/compute/docs/gpus/gpu-regions-zones 
 
 ```bash
 kubectl apply -f hdml-pv.yaml
