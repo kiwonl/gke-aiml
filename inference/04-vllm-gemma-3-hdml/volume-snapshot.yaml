@@ -1,0 +1,20 @@
+# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml#volumesnapshot
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: disk-image-vsc
+driver: pd.csi.storage.gke.io
+# The snapshot will be deleted when the "VolumeSnapshot" object is deleted.
+deletionPolicy: Delete
+parameters:
+  snapshot-type: images
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: my-snapshot
+spec:
+  volumeSnapshotClassName: disk-image-vsc
+  source:
+    # The name of the PersistentVolumeClaim to snapshot.
+    persistentVolumeClaimName: producer-pvc

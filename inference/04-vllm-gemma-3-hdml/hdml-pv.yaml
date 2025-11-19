@@ -1,0 +1,40 @@
+# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml#storage-class
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hyperdisk-ml-multi-zone
+parameters:
+  type: hyperdisk-ml
+  provisioned-throughput-on-create: "4800Mi"
+  enable-multi-zone-provisioning: "true"
+provisioner: pd.csi.storage.gke.io
+allowVolumeExpansion: false
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.gke.io/zone
+    values:
+    - ZONE_1
+    - ZONE_2
+mountOptions:
+  - read_ahead_kb=8192
+---
+# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml#pvc
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: hdml-consumer-pvc
+spec:
+  # Specifies that the new PersistentVolumeClaim should be provisioned from the
+  # contents of the volume snapshot named "my-snapshot".
+  dataSource:
+    name: my-snapshot
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+  accessModes:
+  - ReadOnlyMany
+  storageClassName: hyperdisk-ml-multi-zone
+  resources:
+    requests:
+      storage: 300Gi

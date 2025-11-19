@@ -1,0 +1,78 @@
+# C 타입의 머신에서는 hyperdisk 만 가능
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: balanced-storage
+provisioner: pd.csi.storage.gke.io
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: hyperdisk-balanced
+  provisioned-throughput-on-create: "250Mi"
+  provisioned-iops-on-create: "7000"
+---
+# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml#pvc
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: producer-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: balanced-storage
+---
+# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml#populate-disk
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: producer-job
+spec:
+  template:  # Template for the Pods the Job will create
+    spec:
+      containers:
+      - name: copy
+        resources:
+          requests:
+            cpu: "12"
+            ephemeral-storage: "64Gi"
+         # The image used to download models from Hugging Face.
+        image: huggingface/downloader:0.17.3
+        command: [ "huggingface-cli" ]
+        args:
+        - download
+        # The Hugging Face model to download.
+        - google/gemma-3-12b-it
+        # Destination directory within the container.
+        - --local-dir=/data/gemma-3-12b-it
+        - --local-dir-use-symlinks=False
+        env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: hf_api_token
+        volumeMounts:
+          # Mount path for the PersistentVolume.
+          - mountPath: "/data"
+            name: volume       
+      # Prevents Pod restarts on scheduling failures. The Job will create new Pods
+      # for retries, up to the specified "backoffLimit".
+      restartPolicy: Never
+      volumes:
+        - name: volume
+          persistentVolumeClaim:
+            # References the GCS PVC created earlier.
+            claimName: producer-pvc
+      # autopilot 의 기본 compute class 는 기본 ephemeral disk 제한이 10G 이다 보니, 이를 늘리기 위해 performance compute class 가 필요
+      # Performance 에서 specific machine type 안정하면 c4
+      nodeSelector:
+        cloud.google.com/compute-class: "Performance"
+  # Runs only one Pod at any given time.
+  parallelism: 1
+  # After the Pod runs successfully, the Job is complete.
+  completions: 1
+  # Max retries on Pod failure.
+  backoffLimit: 4

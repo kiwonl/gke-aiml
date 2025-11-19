@@ -1,0 +1,58 @@
+# https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/hyperdisk-ml#populate-disk
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: producer-job
+spec:
+  template:  # Template for the Pods the Job will create
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/cpu-limit: "0"
+        gke-gcsfuse/memory-limit: "0"
+        gke-gcsfuse/ephemeral-storage-limit: "0"
+    spec:
+      containers:
+      - name: copy
+        resources:
+          requests:
+            cpu: "12"
+         # The image used to download models from Hugging Face.
+        image: huggingface/downloader:0.17.3
+        command: [ "huggingface-cli" ]
+        args:
+        - download
+        # The Hugging Face model to download.
+        - google/gemma-3-12b-it
+        # Destination directory within the container.
+        - --local-dir=/data/gemma-3-12b-it
+        - --local-dir-use-symlinks=False
+        env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: hf_api_token
+        volumeMounts:
+          # Mount path for the PersistentVolume.
+          - mountPath: "/data"
+            name: volume       
+      # Prevents Pod restarts on scheduling failures. The Job will create new Pods
+      # for retries, up to the specified "backoffLimit".
+      restartPolicy: Never
+      serviceAccountName: gpu-k8s-sa
+      volumes:
+        - name: volume
+          persistentVolumeClaim:
+            # References the GCS PVC created earlier.
+            claimName: serving-bucket-pvc
+      # autopilot 의 기본 compute class 는 디스크 용량 제한이 10G 이다 보니, 이를 늘리기 위해 performance compute class 가 필요
+      # Performance 에서 specific machine type 안정하면 c4
+      nodeSelector:
+        cloud.google.com/compute-class: "Performance"
+  # Runs only one Pod at any given time.
+  parallelism: 1
+  # After the Pod runs successfully, the Job is complete.
+  completions: 1
+  # Max retries on Pod failure.
+  backoffLimit: 4

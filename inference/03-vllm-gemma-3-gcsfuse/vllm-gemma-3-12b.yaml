@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-gemma-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma-server
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/cpu-limit: "0"
+        gke-gcsfuse/memory-limit: "0"
+        gke-gcsfuse/ephemeral-storage-limit: "0"
+      labels:
+        app: gemma-server
+        ai.gke.io/model: gemma-3-12b-it
+        ai.gke.io/inference-server: vllm
+        examples.ai.gke.io/source: user-guide
+    spec:
+      containers:
+      - name: inference-server
+        image: docker.io/vllm/vllm-openai:v0.10.0
+        resources:
+          requests:
+            cpu: "4"
+            memory: "32Gi"
+            ephemeral-storage: "64Gi"     #32Gi 로 하면 디스크 부족으로 에러 발생 (Warning Evicted ... Pod ephemeral local storage usage exceeds the total limit of containers 32Gi.)
+            nvidia.com/gpu: "2"
+          limits:
+            cpu: "4"
+            memory: "32Gi"
+            ephemeral-storage: "64Gi"     #32Gi 로 하면 디스크 부족으로 에러 발생 (Warning Evicted ... Pod ephemeral local storage usage exceeds the total limit of containers 32Gi.)
+            nvidia.com/gpu: "2"
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+        - --model=/data/gemma-3-12b-it
+        - --tensor-parallel-size=2
+        - --host=0.0.0.0
+        - --port=8000
+        - --max-model-len=16384
+        - --max-num-seqs=4
+        env:
+        - name: LD_LIBRARY_PATH
+          value: ${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        # Mount path for the PersistentVolume.
+        - name: volume
+          mountPath: "/data"
+      serviceAccountName: gpu-k8s-sa
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      - name: volume
+        persistentVolumeClaim:
+          # References the GCS PVC created earlier.
+          claimName: serving-bucket-pvc      
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+        cloud.google.com/gke-gpu-driver-version: latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-service
+spec:
+  selector:
+    app: gemma-server
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
