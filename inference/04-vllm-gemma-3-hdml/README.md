@@ -1,10 +1,10 @@
 # AI Model Serving with Hyperdisk ML
 
-Github Sample Codes: https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/tree/main/ai-ml/llm-serving-gemma/vllm
-
 ## Serve the Gemma-3 model on vLLM with Hyperdisk ML
 
 GKE Autopilot과 **Hyperdisk ML**을 사용하여 Gemma-3 모델을 고속으로 서빙하는 과정을 설명합니다. Hyperdisk ML은 모델 가중치 로딩 시간을 획기적으로 단축시켜 빠른 스케일업을 지원합니다.
+Hyperdisk ML은 블록 스토리지이며 ReadOnlyMany 모드를 지원하지만, 근본적으로 단일 영역에 종속된(Zonal) 리소스이므로, 다른 영역의 노드에서는 접근이 불가능합니다. 따라서 스냅샷을 이용해 새로운 영역에 PV를 복제하는 방법을 사용합니다.
+
 
 ### 1. 기본 환경 설정 (Basic Environment Setup)
 
@@ -54,17 +54,20 @@ C 타입의 머신 시리즈는 PD 가 아닌 Hyperdisk 만 지원하기 때문�
 kubectl apply -f model-downloader.yaml
 ```
 
-Job이 완료될 때까지 대기합니다.
+작업 상태 확인:
 ```bash
-kubectl wait --for=condition=complete job/model-downloader --timeout=300s
+$ kubectl get job
+NAME                   STATUS     COMPLETIONS   DURATION   AGE
+model-downloader-job   Complete   1/1           5m20s      7m42s
 ```
+`model-downloader-job`이 `Complete` 상태가 될 때까지 대기합니다.
 
 ### 5. 볼륨 스냅샷 생성 (Create Volume Snapshot)
 Job 에 의해 AI 모델이 저장된 Hyperdisk Balanced 볼륨으로부터 **Volume Snapshot**을 생성합니다.
 이 스냅샷은 이후 Hyperdisk ML 볼륨을 생성하는 원본으로 사용됩니다.
 
 ```bash
-kubectl apply -f model-pv-snapshot.yaml
+kubectl apply -f model-snapshot.yaml
 ```
 
 ### 6. Hyperdisk ML 스토리지 클래스 및 PVC 생성 (Create StorageClass & PVC for Hyperdisk ML)
@@ -74,7 +77,7 @@ StorageClass 의 Zone 부분에, Inference 서버를 동작시킬 모든 Zone �
 https://docs.cloud.google.com/compute/docs/gpus/gpu-regions-zones 
 
 ```bash
-kubectl apply -f hdml-pv.yaml
+kubectl apply -f hdml-pvc.yaml
 ```
 
 ### 7. Inference Server 배포 (Deploy Inference Server)
@@ -85,6 +88,33 @@ kubectl apply -f hdml-pv.yaml
 kubectl apply -f vllm-gemma-3-12b.yaml
 ```
 
+```
+(VllmWorker rank=0 pid=164) INFO 11-19 18:27:44 [cuda.py:290] Using Flash Attention backend on V1 engine.
+Loading safetensors checkpoint shards:   0% Completed | 0/5 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards:  20% Completed | 1/5 [00:02<00:09,  2.26s/it]
+Loading safetensors checkpoint shards:  40% Completed | 2/5 [00:04<00:07,  2.35s/it]
+Loading safetensors checkpoint shards:  60% Completed | 3/5 [00:07<00:04,  2.40s/it]
+Loading safetensors checkpoint shards:  80% Completed | 4/5 [00:09<00:02,  2.39s/it]
+Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:11<00:00,  2.38s/it]
+Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:11<00:00,  2.37s/it]
+(VllmWorker rank=0 pid=164) 
+(VllmWorker rank=0 pid=164) INFO 11-19 18:27:57 [default_loader.py:262] Loading weights took 11.92 seconds
+(VllmWorker rank=1 pid=165) INFO 11-19 18:27:57 [default_loader.py:262] Loading weights took 11.98 seconds
+(VllmWorker rank=0 pid=164) INFO 11-19 18:27:57 [gpu_model_runner.py:1892] Model loading took 11.9642 GiB and 13.051931 seconds
+(VllmWorker rank=1 pid=165) INFO 11-19 18:27:57 [gpu_model_runner.py:1892] Model loading took 11.9642 GiB and 13.095882 seconds
+```
+
+a 와 b zone 에 모두 
+```
+$ kubectl get no
+NAME                                               STATUS   ROLES    AGE   VERSION
+gk3-vllm-gemma-3-hdml-nap-1fqdiium-553c57f1-sj2l   Ready    <none>   11m   v1.33.5-gke.1201000
+gk3-vllm-gemma-3-hdml-nap-1fqdiium-b8e05fe5-n6d5   Ready    <none>   10m   v1.33.5-gke.1201000
+
+$ kubectl describe no | grep 'topology.kubernetes.io/zone'
+                    topology.kubernetes.io/zone=asia-southeast1-a
+                    topology.kubernetes.io/zone=asia-southeast1-b
+```
 ### 8. 테스트 (Test)
 
 배포된 모델이 정상적으로 작동하는지 테스트합니다.
@@ -102,7 +132,7 @@ curl http://$VLLM_SERVICE/v1/chat/completions \
 -X POST \
 -H "Content-Type: application/json" \
 -d '{
-    "model": "google/gemma-3-12b-it",
+    "model": "/data/gemma-3-12b-it",
     "messages": [
         {
           "role": "user",
@@ -119,7 +149,7 @@ curl http://$VLLM_SERVICE/v1/chat/completions \
   "id": "chatcmpl-e50322f3b7ef408d90a383525c8a37e6",
   "object": "chat.completion",
   "created": 1763088085,
-  "model": "google/gemma-3-12b-it",
+  "model": "/data/gemma-3-12b-it",
   "choices": [
     {
       "index": 0,

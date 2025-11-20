@@ -2,7 +2,7 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: hyperdisk-ml-multi-zone
+  name: hdml-multi-zone
 parameters:
   type: hyperdisk-ml
   provisioned-throughput-on-create: "4800Mi"
@@ -24,17 +24,17 @@ mountOptions:
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
-  name: hdml-consumer-pvc
+  name: hdml-model-pvc
 spec:
   # Specifies that the new PersistentVolumeClaim should be provisioned from the
   # contents of the volume snapshot named "my-snapshot".
   dataSource:
-    name: my-snapshot
+    name: model-snapshot
     kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
   accessModes:
   - ReadOnlyMany
-  storageClassName: hyperdisk-ml-multi-zone
+  storageClassName: hdml-multi-zone
   resources:
     requests:
       storage: 300Gi

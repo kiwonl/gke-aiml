@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: model-pv
+  name: gcs-model-pv
 spec:
   accessModes:
   - ReadWriteMany
@@ -12,7 +12,7 @@ spec:
   # storageClassName: example-storage-class
   claimRef:
     namespace: default
-    name: model-pvc
+    name: gcs-model-pvc
   mountOptions:
     - implicit-dirs #avoid if list cache enabled and doing metadata prefetch
     - metadata-cache:ttl-secs:-1
@@ -33,7 +33,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: model-pvc
+  name: gcs-model-pvc
   namespace: default
 spec:
   accessModes:
@@ -41,5 +41,5 @@ spec:
   resources:
     requests:
       storage: 64Gi
-  volumeName: model-pv
+  volumeName: gcs-model-pv
   storageClassName: ""

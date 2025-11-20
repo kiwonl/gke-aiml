@@ -66,7 +66,7 @@ spec:
       - name: model
         persistentVolumeClaim:
           # References the hdml PVC created earlier.
-          claimName: hdml-consumer-pvc
+          claimName: hdml-model-pvc
       nodeSelector:
         cloud.google.com/gke-accelerator: nvidia-l4
         cloud.google.com/gke-gpu-driver-version: latest
