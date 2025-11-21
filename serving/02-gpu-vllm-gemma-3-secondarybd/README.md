@@ -1,8 +1,23 @@
-# AI Model Serving with Secondary Boot Disks and Hyperdisk ML
+# Serving Gemma 3 on GKE with vLLM, GPU and Secondary Boot Disk
+
+```
+.
+├── README.md - Documentation
+└── vllm-gemma-3-4b-sbd.yaml - vLLM deployment manifest for Gemma 3 4B (Secondary Boot Disk)
+```
+---
+
+이 가이드는 **Secondary Boot Disk**를 활용하여 대용량 컨테이너 이미지를 미리 로드(Pre-load)하고, 이를 통해 AI 추론 워크로드의 **초기 구동 시간(Cold Start)을 획기적으로 단축**하는 방법을 다룹니다.
+
+[Use secondary boot disks to preload data or container images](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/data-container-image-preloading)
+
 
 ## Secondary Boot Disk Image Creation
 
-보조 부팅 디스크(Secondary Boot Disk)를 사용하여 모델 데이터를 미리 로드한 이미지를 생성하는 과정입니다. [관련 문서](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/data-container-image-preloading#prepare)
+일반적인 GKE 배포에서 Pod가 시작될 때 컨테이너 이미지를 네트워크를 통해 레지스트리에서 다운로드(Pull)합니다. AI 모델 이미지는 수 GB에서 수십 GB에 달하므로 이 과정에서 수 분의 지연 시간이 발생할 수 있습니다.
+
+**해결책:**
+컨테이너 이미지가 이미 다운로드된 상태의 디스크(Secondary Boot Disk)를 생성합니다. GKE 노드는 이미지를 다운로드하는 대신, 이 디스크를 로컬 스토리지처럼 즉시 마운트하여 컨테이너를 실행합니다. 이는 **Cold Start 시간을 획기적으로 줄여줍니다.**
 
 ### 1. 환경 설정 (Environment Setup)
 
@@ -19,7 +34,7 @@ export VLLM_DISK_IMAGE_NAME=vllm-image
 
 ### 2. Secondary Boot Disk Builder 다운로드 (Download Builder)
 
-Google Cloud에서 제공하는 디스크 이미지 빌더 도구를 다운로드합니다.
+Google Cloud에서 제공하는 [GKE Disk Image Builder](https://github.com/ai-on-gke/tools) 도구를 사용합니다. 이 도구는 복잡한 VM 생성 및 이미지 생성 과정을 자동화해 줍니다.
 
 ```bash
 git clone https://github.com/ai-on-gke/tools.git
@@ -28,7 +43,7 @@ cd tools/gke-disk-image-builder
 
 ### 3. 로그 저장용 GCS 버킷 생성 (Create GCS Bucket for Logs)
 
-빌드 로그를 저장할 GCS 버킷을 생성합니다.
+Disk Imgage Builder가 실행되는 동안 발생하는 로그를 저장할 공간입니다.
 
 ```bash
 gsutil mb -b on -l $REGION gs://$LOG_BUCKET_NAME
@@ -42,7 +57,11 @@ go mod tidy
 
 ### 5. Secondary Boot Disk 이미지 생성 (Create Image)
 
-빌더를 실행하여 컨테이너 이미지가 포함된 디스크 이미지를 생성합니다. 이 작업은 수 분이 소요될 수 있습니다.
+빌더를 실행하면 내부적으로 다음 작업이 수행됩니다.
+1.  임시 VM 인스턴스 생성.
+2.  지정된 컨테이너 이미지(`vllm/vllm-openai:v0.10.0`)를 `docker pull`로 다운로드.
+3.  이미지가 저장된 데이터 디스크를 분리(Detach)하여 GCE Disk Image(`vllm-image`)로 저장.
+4.  임시 VM 삭제. (빌더에서 생성한 리소스를 자동으로 정리)
 
 ```bash
 go run ./cli \
@@ -106,7 +125,7 @@ Image has successfully been created at: projects/qwiklabs-asl-01-cb385fd8bcca/gl
 export PROJECT_ID=
 export HUGGINGFACE_TOKEN=
 ```
-```
+```bash
 export CLUSTER_NAME=vllm-gemma-3-secondarybd
 ```
 
@@ -131,7 +150,10 @@ kubectl create secret generic hf-secret \
 
 ### 4. 디스크 이미지 허용 정책 설정 (Allow Secondary Boot Disk Image)
 
-GKE가 프로젝트의 커스텀 이미지를 사용할 수 있도록 `GCPResourceAllowlist`를 생성합니다. Autopilot 모드에서는 이 단계가 필수적입니다.
+**중요 (Autopilot Security):**
+GKE Autopilot은 보안을 위해 기본적으로 검증되지 않은 외부 디스크 이미지의 사용을 차단합니다. 우리가 앞서 만든 `vllm-image`는 프로젝트 내의 커스텀 이미지이므로, 이를 클러스터에서 사용할 수 있도록 **명시적으로 허용(Allowlist)** 해주어야 합니다.
+
+*   `GCPResourceAllowlist` 리소스를 통해 특정 프로젝트의 이미지를 신뢰할 수 있는 리소스로 등록합니다.
 
 ```bash
 kubectl apply -f - <<EOF
@@ -150,12 +172,12 @@ EOF
 Secondary Boot Disk를 사용하는 Pod를 배포합니다.
 
 ```bash
-sed -i "s/\$VLLM_DISK_IMAGE_NAME/${VLLM_DISK_IMAGE_NAME}/g" vllm-gemma-3-4b.yaml
-sed -i "s/\$PROJECT_ID/${PROJECT_ID}/g" vllm-gemma-3-4b.yaml
+sed -i "s/\$VLLM_DISK_IMAGE_NAME/${VLLM_DISK_IMAGE_NAME}/g" vllm-gemma-3-4b-sbd.yaml
+sed -i "s/\$PROJECT_ID/${PROJECT_ID}/g" vllm-gemma-3-4b-sbd.yaml
 ```
 
 ```bash
-kubectl apply -f vllm-gemma-3-4b.yaml
+kubectl apply -f vllm-gemma-3-4b-sbd.yaml
 ```
 
 ### 6. 테스트 (Test)
@@ -202,26 +224,4 @@ curl http://$VLLM_SERVICE/v1/chat/completions \
     }
   ]
 }
-```
-
-### 7. 반복 테스트 (Repetitive Test)
-
-```bash
-for i in {1..10}; do
-  echo "Request #$i"
-  curl http://$VLLM_SERVICE/v1/chat/completions \
-    -X POST \
-    -H "Content-Type: application/json" \
-    -d '{
-      "model": "google/gemma-3-12b-it",
-      "messages": [
-        {
-          "role": "user",
-          "content": "Why is the sky blue?"
-        }
-      ]
-    }'
-  echo ""  # Newline
-  sleep 1
-done
 ```

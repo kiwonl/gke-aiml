@@ -1,4 +1,14 @@
-# AI Model Serving with GCS Fuse
+# Serving Gemma 3 on GKE with vLLM, GPU and GCSFuse
+
+```
+.
+├── README.md - Documentation
+├── gcs-pvc.yaml - PVC configuration for GCS Fuse
+├── model-downloader.yaml - Job to download model
+└── vllm-gemma-3-12b-gcsfuse.yaml - vLLM deployment manifest for Gemma 3 12B (GCS Fuse)
+```
+---
+이 가이드는 **GCS Fuse**를 사용하여 Google Cloud Storage(GCS) 버킷을 Kubernetes Pod에 로컬 파일 시스템처럼 마운트하는 방법을 설명합니다. 이 방식은 **모델 관리의 유연성**을 제공하며, 별도의 다운로드 과정 없이 대용량 모델을 즉시 사용할 수 있게 합니다.
 
 GCS Fuse를 사용하여 Google Cloud Storage(GCS) 버킷을 로컬 파일 시스템처럼 마운트하고, 대용량 모델을 효율적으로 로드하여 서빙하는 방법입니다.
 
@@ -28,7 +38,10 @@ gcloud container clusters get-credentials $CLUSTER_NAME --region $REGION
 
 ### 3. Workload Identity Federation 설정 (Configure Workload Identity Federation)
 
-GKE Pod가 GCS 버킷에 접근할 수 있도록 IAM 권한과 Kubernetes ServiceAccount를 연결합니다.
+보안상 권장되지 않는 "Service Account Key(JSON 파일)"를 다운로드하여 Pod에 마운트하는 대신, **Workload Identity**를 사용하여 안전하게 인증합니다.
+
+*   **작동 원리:** Kubernetes Service Account(KSA)와 Google Service Account(GSA)를 1:1로 연결합니다. Pod가 KSA를 사용하면, GKE가 자동으로 GSA의 권한을 임시 토큰 형태로 발급해줍니다.
+*   이 예제에서는 `gpu-k8s-sa`(KSA)가 `gke-ai-sa`(GSA)인 척 하여 GCS 버킷에 접근하게 됩니다.
 
 ```bash
 # Kubernetes ServiceAccount 생성
@@ -37,11 +50,12 @@ kubectl create serviceaccount gpu-k8s-sa
 # Google Service Account (GSA) 생성
 gcloud iam service-accounts create gke-ai-sa
 
-# GSA에 GCS 권한 부여
+# GSA에 GCS 권한 부여 (버킷 읽기/쓰기 권한)
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member "serviceAccount:gke-ai-sa@$PROJECT_ID.iam.gserviceaccount.com" \
     --role roles/storage.objectUser
 
+# 메트릭 수집을 위한 권한 추가
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member "serviceAccount:gke-ai-sa@$PROJECT_ID.iam.gserviceaccount.com" \
     --role roles/storage.insightsCollectorService
@@ -51,7 +65,7 @@ gcloud iam service-accounts add-iam-policy-binding gke-ai-sa@$PROJECT_ID.iam.gse
     --role roles/iam.workloadIdentityUser \
     --member "serviceAccount:$PROJECT_ID.svc.id.goog[default/gpu-k8s-sa]"
 
-# KSA에 GSA 주석 추가
+# KSA에 GSA 주석 추가 (Pod가 이 KSA를 쓸 때 어떤 GSA로 매핑될지 알려줌)
 kubectl annotate serviceaccount gpu-k8s-sa \
     iam.gke.io/gcp-service-account=gke-ai-sa@$PROJECT_ID.iam.gserviceaccount.com
 ```
@@ -79,7 +93,11 @@ kubectl create secret generic hf-secret \
 
 ### 6. GCS Fuse를 이용한 PV, PVC 생성 (Create PV/PVC with GCS Fuse)
 
-GCS 버킷을 영구 볼륨(Persistent Volume)으로 사용하기 위해 설정을 적용합니다. [관련 문서](https://cloud.google.com/kubernetes-engine/docs/how-to/cloud-storage-fuse-csi-driver-perf#inference-serving-example)
+GCS 버킷을 Kubernetes의 Persistent Volume(PV)처럼 사용합니다.
+
+*   **GCS Fuse CSI Driver:** Pod가 데이터를 읽으려 할 때, 백그라운드에서 GCS API를 호출하여 데이터를 스트리밍으로 가져옵니다.
+*   사용자는 마치 로컬 디스크에 있는 파일을 읽는 것처럼 `/data/model.bin` 경로로 접근하지만, 실제로는 GCS 버킷의 객체를 가져오는 것입니다.
+*   **장점:** 모델 사이즈가 아무리 커도 Pod의 로컬 디스크 용량을 차지하지 않으며, 버킷에 파일을 올리면 즉시 모든 Pod에 반영됩니다.
 
 > **주의:** `gcs-pvc.yaml` 파일 내의 `${BUCKET_NAME}`을 실제 버킷 이름으로 변경해야 합니다.
 > ```
@@ -112,7 +130,7 @@ model-downloader-job   Complete   1/1           2m57s      25m
 모델이 준비되면 vLLM 서버를 배포합니다.
 
 ```bash
-kubectl apply -f vllm-gemma-3-12b.yaml
+kubectl apply -f vllm-gemma-3-12b-gcsfuse.yaml
 ```
 
 ### 9. 테스트 (Test)

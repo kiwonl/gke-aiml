@@ -8,16 +8,18 @@
 
 ## 디렉토리 구조 및 예제
 
-주요 예제 코드는 `inference` 폴더에 위치하며, 각 하위 폴더는 특정 시나리오를 다루고 있습니다.
+주요 예제 코드는 `serving` 폴더에 위치하며, 각 하위 폴더는 특정 시나리오를 다루고 있습니다.
 
-### 📂 Inference (추론)
+### 📂 Serving (추론 서빙)
 
 | 예제 (바로가기) | 주요 내용 | 특징 |
 | :--- | :--- | :--- |
-| **[01. Basic vLLM & Gemma 3](./inference/01-vllm-gemma-3/)** | 기본적인 vLLM 배포 | • Gemma 3 모델 (4B, 12B, 27B) 배포<br>• 표준적인 GKE 배포 방식 |
-| **[02. Secondary Boot Disk](./inference/02-vllm-gemma-3-secondarybd/)** | 부팅 디스크 최적화 | • Secondary Boot Disk를 활용한 이미지 풀링 속도 향상<br>• 컨테이너 시작 시간 단축 |
-| **[03. GCS Fuse](./inference/03-vllm-gemma-3-gcsfuse/)** | Cloud Storage 연동 | • GCS Fuse를 통한 모델 가중치 로드<br>• 대용량 모델의 유연한 스토리지 관리 |
-| **[04. Hyperdisk ML](./inference/04-vllm-gemma-3-hdml/)** | 고성능 스토리지 | • Hyperdisk ML을 활용한 모델 로딩 가속화<br>• 빠른 I/O 성능이 필요한 경우 적합 |
+| **[01. Basic vLLM & Gemma 3](./serving/01-gpu-vllm-gemma-3/)** | 기본적인 vLLM 배포 | • Gemma 3 모델 (4B, 12B, 27B) 배포<br>• 표준적인 GKE 배포 방식 (GPU) |
+| **[02. Secondary Boot Disk](./serving/02-gpu-vllm-gemma-3-secondarybd/)** | 부팅 디스크 최적화 | • Secondary Boot Disk를 활용한 이미지 풀링 속도 향상<br>• 컨테이너 시작 시간 단축 |
+| **[03. GCS Fuse](./serving/03-gpu-vllm-gemma-3-gcsfuse/)** | Cloud Storage 연동 | • GCS Fuse를 통한 모델 가중치 로드<br>• 대용량 모델의 유연한 스토리지 관리 |
+| **[04. Hyperdisk ML](./serving/04-gpu-vllm-gemma-3-hdml/)** | 고성능 스토리지 | • Hyperdisk ML을 활용한 모델 로딩 가속화<br>• 빠른 I/O 성능이 필요한 경우 적합 |
+| **[05. Inference Gateway](./serving/05-gpu-vllm-gemma-3-inferencegw/)** | 멀티 모델 라우팅 | • Inference Gateway를 활용한 트래픽 관리<br>• LoRA Adapter 기반 멀티 모델 서빙 |
+| **[06. TPU Serving](./serving/06-tpu-vllm-gemma-3-gcsfuse/)** | TPU 활용 서빙 | • Google Cloud TPU (v6e 등)를 활용한 고성능 추론<br>• vLLM의 TPU 가속 기능 활용 |
 
 ## 시작하기 전 준비사항 (Prerequisites)
 
@@ -27,7 +29,7 @@
 2.  **도구 설치**:
     *   `gcloud` CLI
     *   `kubectl`
-3.  **GKE 클러스터**: GPU 노드 풀이 포함된 클러스터 (예: L4, A100 등).
+3.  **GKE 클러스터**: GPU(L4, A100 등) 또는 TPU 노드 풀이 포함된 클러스터.
 4.  **Hugging Face 토큰**: Gemma 3 모델 접근 권한이 있는 토큰 (Secret 생성 시 필요).
 
 ## 사용 방법

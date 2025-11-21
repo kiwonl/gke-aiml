@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-gemma-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma-server
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/cpu-limit: "0"
+        gke-gcsfuse/memory-limit: "0"
+        gke-gcsfuse/ephemeral-storage-limit: "0"
+      labels:
+        app: gemma-server
+        ai.gke.io/model: gemma-3-12b-it
+        ai.gke.io/inference-server: vllm
+        examples.ai.gke.io/source: user-guide
+    spec:
+      containers:
+      - name: inference-serve
+        image: vllm/vllm-tpu:latest                         ################################################
+        resources:
+          requests:
+            google.com/tpu: 4                               ################################################
+          limits:
+            google.com/tpu: 4                               ################################################
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+        - --model=/data/gemma-3-12b-it      
+        - --host=0.0.0.0
+        - --port=8000
+        - --tensor-parallel-size=4
+        - --max-model-len=4096
+        - --max-num-batched-tokens=512
+        - --max-num-seqs=4
+        env:
+        - name: VLLM_XLA_CACHE_PATH
+          value: "/data"
+        - name: VLLM_USE_V1
+          value: "1"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        # Mount path for the PersistentVolume.
+        - name: model
+          mountPath: "/data"
+      serviceAccountName: gpu-k8s-sa
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      - name: model
+        persistentVolumeClaim:
+          # References the GCS PVC created earlier.
+          claimName: gcs-model-pvc
+      nodeSelector:
+        cloud.google.com/gke-tpu-topology: 2x2                ################################################
+        cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice   ################################################
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-service
+spec:
+  selector:
+    app: gemma-server
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000

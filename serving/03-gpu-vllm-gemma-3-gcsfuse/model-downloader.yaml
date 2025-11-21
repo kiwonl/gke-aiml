@@ -45,7 +45,7 @@ spec:
         - name: model
           persistentVolumeClaim:
             # References the GCS PVC created earlier.
-            claimName: model-pvc
+            claimName: gcs-model-pvc
       # autopilot 의 기본 compute class 는 디스크 용량 제한이 10G 이다 보니, 이를 늘리기 위해 performance compute class 가 필요
       # Performance 에서 specific machine type 안정하면 c4
       nodeSelector:
