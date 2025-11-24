@@ -1,0 +1,9 @@
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: vllm-fallback
+spec:
+  priorities:
+  - nodepools: [v6e-1]
+  - nodepools: [l4-spot]
+  - nodepools: [l4]

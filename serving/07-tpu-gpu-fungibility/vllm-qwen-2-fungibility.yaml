@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: vllm
+spec:
+ replicas: 1
+ selector:
+   matchLabels:
+     app: vllm
+ template:
+   metadata:
+     labels:
+       app: vllm
+   spec:
+     nodeSelector:
+       cloud.google.com/compute-class: vllm-fallback
+     containers:
+     - name: vllm-gpu
+       image: $REGION-docker.pkg.dev/$PROJECT_ID/docker-repo/vllm-fungibility:GPU
+       args:
+       - --host=0.0.0.0
+       - --port=8000
+       - --tensor-parallel-size=1
+       - --model=Qwen/Qwen2-1.5B
+       securityContext:
+         privileged: true
+       env:
+       - name: HUGGING_FACE_HUB_TOKEN
+         valueFrom:
+           secretKeyRef:
+             name: hf-secret
+             key: hf_api_token
+       volumeMounts:
+       - name: gpu
+         mountPath: /usr/local/nvidia
+       resources:
+         limits:
+           ephemeral-storage: 43Gi
+     - name: vllm-tpu
+       securityContext:
+         privileged: true
+       image: $REGION-docker.pkg.dev/$PROJECT_ID/docker-repo/vllm-fungibility:TPU
+       args:
+       - --host=0.0.0.0
+       - --port=8000
+       - --max-model-len=8192
+       - --model=Qwen/Qwen2-1.5B
+       env:
+       - name: HUGGING_FACE_HUB_TOKEN
+         valueFrom:
+           secretKeyRef:
+             name: hf-secret
+             key: hf_api_token
+       - name: TPU_TOPOLOGY
+         value: 1x1
+       - name: TPU_WORKER_ID
+         value: "0"
+       - name: TPU_SKIP_MDS_QUERY
+         value: "true"
+       - name: TPU_TOPOLOGY_WRAP
+         value: "false,false,false"
+       - name: TPU_CHIPS_PER_HOST_BOUNDS
+         value: "1,1,1"
+       - name: TPU_ACCELERATOR_TYPE
+         value: v6e-1
+       - name: TPU_RUNTIME_METRICS_PORTS
+         value: "8431"
+       - name: TPU_TOPOLOGY_ALT
+         value: "false"
+       - name: CHIPS_PER_HOST_BOUNDS
+         value: "1,1,1"
+       - name: TPU_WORKER_HOSTNAMES
+         value: localhost
+       - name: HOST_BOUNDS
+         value: "1,1,1"
+       - name: TPU_HOST_BOUNDS
+         value: "1,1,1"
+       - name: NODE_IP
+         valueFrom:
+           fieldRef:
+             fieldPath: status.hostIP
+       - name: VBAR_CONTROL_SERVICE_URL
+         value: $(NODE_IP):8353
+     volumes:
+     - name: gpu
+       hostPath:
+         path: /home/kubernetes/bin/nvidia
+         type: DirectoryOrCreate
+     tolerations:
+     - key: "nvidia.com/gpu"
+       operator: "Exists"
+       effect: "NoSchedule"
+     - key: "google.com/tpu"
+       operator: "Exists"
+       effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+ name: vllm-service
+spec:
+ selector:
+   app: vllm
+ type: LoadBalancer
+ ports:
+   - name: http
+     protocol: TCP
+     port: 80
+     targetPort: 8000
