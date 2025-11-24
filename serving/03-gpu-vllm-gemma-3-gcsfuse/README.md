@@ -18,7 +18,6 @@ GCS Fuse를 사용하여 Google Cloud Storage(GCS) 버킷을 로컬 파일 시�
 *   `HUGGINGFACE_TOKEN`: Gemma 모델을 다운로드받기 위한 HuggingFace Access Token입니다. (모델 사용 권한 승인 필요)
 ```bash
 export PROJECT_ID=
-export PROJECT_NUMBER=
 
 export REGION=asia-southeast1
 export CLUSTER_NAME=vllm-gemma-3-gcsfuse
